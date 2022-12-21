@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <link rel="stylesheet" href="{{url_for('static', filename='css/bootstrap.min.css')}}"/>
+    <meta charset="UTF-8">
+    <title>Welcome to Login Page</title>
+
+</head>
+<body>
+<script type="text/javascript" src="{{url_for('static', filename='js/bootstrap.min.js')}}"></script>
+<script type="text/javascript" src="{{url_for('static', filename='js/jquery-3.2.1.min.js')}}"></script>
+  <div class="container" style="width:20%">
+      <div class=""col-md-offset-3 col-md-5" style="margin-top:120px">
+          <h3 class="page-header text-info">User Login Page</h3>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category,message in messages %}
+            <div class="alert alert-{{category}}">{{message}}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+          <form method="POST" action="/" autocomplete="off">
+            <div class="form-group">
+              <label>User Name</label>
+              <input type="text" name="uname" class="form-control">
+            </div>
+            <div class="form-group">
+              <label>AccId</label>
+              <input type="password" name="aid" class="form-control">
+            </div>
+            <div class="form-group">
+              <input type="submit" value="Login" class="btn btn-primary btn-block">
+            </div>
+          </form>
+      </div>
+  </div>
+</body>
+</html>
+<script>$(document).ready(function(){$(".alert").hide(4000);});</script>

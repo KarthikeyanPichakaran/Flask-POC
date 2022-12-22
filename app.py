@@ -1,16 +1,19 @@
-from flask import Flask, render_template, request, redirect, url_for, flash, jsonify, Response,g
-from flask_sqlalchemy import SQLAlchemy
-from flask_httpauth import HTTPBasicAuth
-from werkzeug.security import generate_password_hash, check_password_hash
-from flask_marshmallow import Marshmallow
-import json, os
-import boto3
-from botocore.exceptions import NoCredentialsError
-from configparser import ConfigParser
-import logging
-from flasgger import Swagger
-#from flasgger.utils import swag_from
-#from flasgger import LazyString, LazyJSONEncoder
+from flask import Flask, render_template, session, request, redirect, url_for, flash, jsonify, Response,g #flask framework
+from flask_sqlalchemy import SQLAlchemy #mysql db connection
+from flask_httpauth import HTTPBasicAuth #basic authentication
+from werkzeug.security import generate_password_hash, check_password_hash #generate password
+from flask_marshmallow import Marshmallow #data serialization
+import json, os 
+import boto3 #aws service
+from botocore.exceptions import NoCredentialsError #aws service exceptions
+from configparser import ConfigParser #config file
+#import logging #auto debugging 
+from flasgger import Swagger #api documentation
+from flasgger.utils import swag_from #decorator for an API
+from flasgger import LazyString, LazyJSONEncoder #swagger UI
+import datetime
+curdata = datetime.datetime.today().strftime('%d%m%Y')
+
 
 #app initialization
 app = Flask(__name__)
@@ -19,44 +22,34 @@ app.secret_key = "Secret_Key" #session
 #basic authentication
 auth = HTTPBasicAuth()
 
-#db connection
+#db configuration
 app.config['SQLALCHEMY_DATABASE_URI'] = 'mysql://root:''@localhost/bankapp'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 ma = Marshmallow(app)
 
-#static log file created
-log_file = "D:\\Flask_POC\\flaskpoc\\log\\error_log.txt"
-def track_exception(err_msg):
-    with open(log_file, "a+") as er:
-        er.write(err_msg)
-logging.basicConfig(filename="D:\\Flask_POC\\flaskpoc\log\logger.txt", filemode='a', level=logging.INFO)
-
-#API documentations
-app.config['SWAGGER'] = {
-"swagger_version": "2.0",
-"specs": [
-{
-"version": "0.0.1",
-"title": "Api v1",
-"endpoint": 'v1_spec',
-"route": '/v1/spec',}]
+#swagger configuration for API documentations
+app.config["SWAGGER"] = {"title": "Flask Swagger-UI", "uiversion": 2}
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec_1",
+            "route": "/apispec_1.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/swagger/",
 }
 
-swagger = Swagger(app)
-
-
-#file upload from loacl to s3
-def upload_to_aws(resp_json_file, bucket, s3path):
-    try:
-        s3resource.upload_file(resp_json_file, bucket, s3path)
-        return "True"
-    except FileNotFoundError:
-        err_msg = (f"Err: Json file not found {resp_json_file}")
-        track_exception(err_msg)
-    except NoCredentialsError:
-        err_msg = (f"Err: Access issue to upload the file")
-        track_exception(err_msg)
+template = dict(
+    swaggerUiPrefix=LazyString(lambda: request.environ.get("HTTP_X_SCRIPT_NAME", ""))
+)
+app.json_encoder = LazyJSONEncoder
+swagger = Swagger(app, config=swagger_config)
 
 #DB model creation
 class Custdata(db.Model):
@@ -86,35 +79,47 @@ class BankSchema(ma.Schema):
 bank_schema = BankSchema()
 bank_schema = BankSchema(many=True)
 
+#static log file created
+log_file = "D:\\Flask_POC\\flaskpoc\\log\\error_log.txt"
+def track_exception(err_msg):
+    with open(log_file, "a+") as er:
+        er.write(err_msg)
+
+#Json response file upload from loacl to s3
+def upload_to_aws(resp_json_file, bucket, s3path):
+    try:
+        s3resource.upload_file(resp_json_file, bucket, s3path)
+        return "True"
+    except FileNotFoundError:
+        err_msg = (f"Err: Json file not found {resp_json_file}")
+        track_exception(err_msg)
+    except NoCredentialsError:
+        err_msg = (f"Err: Access issue to upload the file")
+        track_exception(err_msg)
+
 #User LogIn to access API
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    try:
-        if request.method == 'POST':
-            #uname = request.form['uname']
-            cust_id = int(request.form['aid'])
-            cdata = Custdata.query.filter_by(customer_id = cust_id)
-            res = bank_schema.jsonify(cdata)
-            redata = json.dumps(str(res))
-            logging.info(f"The details are {type(res)} {type(redata)}")
-            logging.info(f"The details are {res}, {redata}, {str(cdata)}, {cdata.json}")
-            #for item in res:
-            if redata[0]:
-                g.record = 1
-                all_data = Custdata.query.all()
-                return bank_schema.jsonify(all_data)
-            else:
-                g.record = 0
-    
-            if g.record !=1:
-                flash("Username and Account Id Mismatch...!!!", 'danger')
-                return redirect(url_for('login'))
-    except:
-        err_msg = ("Err: Login issue please check the customer input")
-        track_exception(err_msg)
+    if request.method == 'POST':
+        cust_id = int(request.form['aid'])
+        cdata = Custdata.query.get(cust_id)
+        if cdata != None:
+            g.record = 1
+            if 'cust_id' in session:
+                session.clear()
+            all_data = Custdata.query.all()
+            return bank_schema.jsonify(all_data)
+        else:
+            g.record = 0
+
+        if g.record !=1:
+            flash("Username and Account Id Mismatch...!!!", 'danger')
+            return redirect(url_for('login'))
     return render_template("login.html")
+    
 #Fetch all customer details
 @app.route('/custdata', methods=['GET'])
+@swag_from("swagger_doc.yaml")
 def get_customer_details():
     try:
         all_data = Custdata.query.all()
@@ -125,6 +130,7 @@ def get_customer_details():
 
 #Add new customer details    
 @app.route('/custdata', methods=['POST'])
+@swag_from("swagger_doc.yaml")
 def add_customer():
     try:
         if request.method == 'POST':
@@ -143,6 +149,7 @@ def add_customer():
         track_exception(err_msg)
 
 #get specific customer data
+@swag_from("swagger_doc.yaml")
 @app.route("/custdata/<customer_id>", methods=["GET"])
 def get_detail(customer_id):
     try:
@@ -155,6 +162,7 @@ def get_detail(customer_id):
 
 #Update the existing customer details
 @app.route("/custdata/<customer_id>", methods=['PUT'])
+@swag_from("swagger_doc.yaml")
 def update(customer_id):
     try:
         if request.method == 'PUT':
@@ -173,6 +181,7 @@ def update(customer_id):
 
 #Delete the specific customer
 @app.route('/custdata/<customer_id>', methods=['DELETE'])
+@swag_from("swagger_doc.yaml")
 def delete(customer_id):
     try:    
         my_data = Custdata.query.get(customer_id)
@@ -203,8 +212,8 @@ def get_cust_details_and_upload_to_s3():
 
             with open(resp_json_file, "a+") as outfile:
                 outfile.write(str(output))
-                
-        s3path = aws_access["s3path"] + "resp.json"
+
+        s3path = aws_access["s3path"] + f"Resp_JSON/resp.json_{curdata}"
         bucket = aws_access["s3bucketname"]
         uploaded = upload_to_aws(resp_json_file, bucket, s3path)
 
@@ -217,6 +226,15 @@ def get_cust_details_and_upload_to_s3():
     except Exception as e:
         err_msg = (f"Err: Unable to fetch the Customer Details {e}")
         track_exception(err_msg)
+
+#log file upload to S3 bucket
+s3path = aws_access["s3path"]
+bucket = aws_access["s3bucketname"]
+if os.path.exists(log_file):
+    uploaded = upload_to_aws(log_file, bucket, s3path + f"Error_Log/log.txt_{curdata}")
+    os.remove(log_file)
+else:
+    next
 
 #main function
 if __name__ == "__main__":

@@ -3,16 +3,7 @@ import json
 import os
 import datetime
 from configparser import ConfigParser  # config file
-from flask import (
-    Flask,
-    render_template,
-    session,
-    request,
-    redirect,
-    url_for,
-    flash,
-    g
-)  # flask framework
+from flask import (Flask, render_template, session, request, redirect, url_for, flash, g)  # flask framework
 from flask_sqlalchemy import SQLAlchemy  # mysql db connection
 from flask_httpauth import HTTPBasicAuth  # basic authentication
 from flask_marshmallow import Marshmallow  # data serialization
@@ -322,8 +313,6 @@ health.add_check(delete)
 
 # Add a flask route to expose information
 app.add_url_rule("/healthcheck", "healthcheck", view_func=lambda: health.run())
-app.add_url_rule("/environment", "environment", view_func=lambda: envdump.run())
-
 
 # main function
 if __name__ == "__main__":
